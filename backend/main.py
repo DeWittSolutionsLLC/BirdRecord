@@ -1,5 +1,5 @@
 """
-BirdNET Audio Analysis API
+BirdNET Audio Analysis API - Lightweight tflite version
 Run with: uvicorn main:app --reload --port 8000
 """
 
@@ -101,32 +101,25 @@ app.add_middleware(
     max_age=3600,
 )
 
-# Explicit OPTIONS handler so preflight never gets a 405
 @app.options("/analyze")
 async def options_analyze(request: Request):
-    return JSONResponse(
-        content={},
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "POST, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-        },
-    )
+    return JSONResponse(content={}, headers={
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+    })
 
 @app.options("/health")
 async def options_health(request: Request):
-    return JSONResponse(
-        content={},
-        headers={
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-        },
-    )
+    return JSONResponse(content={}, headers={
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+    })
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Model load
+# Load model at startup using tflite runtime only (low memory)
 # ─────────────────────────────────────────────────────────────────────────────
 print("Loading BirdNET model...")
 analyzer = Analyzer()

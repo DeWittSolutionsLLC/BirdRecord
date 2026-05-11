@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, RotateCcw, MapPin, AlertCircle, Bird } from "lucide-react";
+import { Mic, MicOff, RotateCcw, MapPin, AlertCircle, Bird, Upload } from "lucide-react";
 import { useRecorder } from "./useRecorder";
 import "./App.css";
 
@@ -118,14 +118,14 @@ function TimerRing({ progress, elapsed }) {
   );
 }
 
-function Spinner() {
+function Spinner({ label }) {
   return (
     <div className="spinner-wrap">
       <svg className="spin" width={36} height={36} viewBox="0 0 36 36">
         <circle cx={18} cy={18} r={15} fill="none" stroke="rgba(74,222,128,0.2)" strokeWidth={3} />
         <path d="M18 3 a15 15 0 0 1 15 15" fill="none" stroke="#4ade80" strokeWidth={3} strokeLinecap="round" />
       </svg>
-      <p className="spinner-text">Analyzing audio...</p>
+      <p className="spinner-text">{label || "Analyzing audio..."}</p>
     </div>
   );
 }
@@ -136,8 +136,10 @@ export default function App() {
   const [apiError,     setApiError]     = useState("");
   const [loading,      setLoading]      = useState(false);
   const [backendReady, setBackendReady] = useState(false);
+  const [uploadName,   setUploadName]   = useState("");
+  const fileInputRef = useRef(null);
 
-  // Wake up the backend as soon as the page loads
+  // Wake up backend on page load
   useEffect(() => {
     fetch(`${BACKEND_URL}/health`)
       .then(r => { if (r.ok) setBackendReady(true); })
@@ -145,15 +147,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (phase === "done" && audioBlob) analyze(audioBlob);
+    if (phase === "done" && audioBlob) analyze(audioBlob, "recording.webm");
   }, [phase, audioBlob]);
 
-  async function analyze(blob) {
+  async function analyze(blob, filename) {
     setLoading(true);
     setApiError("");
     setResults([]);
     const form = new FormData();
-    form.append("audio", blob, "recording.webm");
+    form.append("audio", blob, filename || "recording.webm");
     try {
       const res  = await fetch(`${BACKEND_URL}/analyze`, { method: "POST", body: form });
       if (!res.ok) {
@@ -163,12 +165,24 @@ export default function App() {
       const data = await res.json();
       setResults(data.detections || []);
       if ((data.detections || []).length === 0)
-        setApiError("No bird species detected. Try recording closer to birds or in a quieter environment.");
+        setApiError("No bird species detected. Try a clearer recording or a file with more bird sounds.");
     } catch (e) {
       setApiError(e.message);
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleFileUpload(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadName(file.name);
+    setApiError("");
+    setResults([]);
+    reset();
+    analyze(file, file.name);
+    // Reset input so same file can be re-uploaded
+    e.target.value = "";
   }
 
   const isRecording  = phase === "recording";
@@ -201,33 +215,53 @@ export default function App() {
 
           <div className="status">
             {isRecording  && <TimerRing progress={progress} elapsed={elapsed} />}
-            {isProcessing && <Spinner />}
+            {isProcessing && <Spinner label={uploadName ? `Analyzing ${uploadName}...` : "Analyzing audio..."} />}
             {!isRecording && !isProcessing && (
               <p className="status-text">
                 {phase === "idle"
-                  ? "Press the button to start recording up to 10 seconds"
-                  : "Recording complete"}
+                  ? "Record live audio or upload an audio file"
+                  : "Analysis complete"}
               </p>
             )}
           </div>
 
+          {/* Buttons */}
           <div className="btn-row">
             {!isRecording && !isProcessing && (
-              <button
-                className={phase === "idle" ? "btn-start" : "btn-reset"}
-                onClick={phase === "idle" ? start : reset}
-              >
-                {phase === "idle"
-                  ? <><Mic size={15} /> Start Recording</>
-                  : <><RotateCcw size={14} /> Record Again</>}
-              </button>
+              <>
+                <button
+                  className={phase === "idle" ? "btn-start" : "btn-reset"}
+                  onClick={phase === "idle" ? start : () => { reset(); setUploadName(""); setResults([]); setApiError(""); }}
+                >
+                  {phase === "idle"
+                    ? <><Mic size={15} /> Record</>
+                    : <><RotateCcw size={14} /> Reset</>}
+                </button>
+
+                <button className="btn-upload" onClick={() => fileInputRef.current.click()}>
+                  <Upload size={15} /> Upload File
+                </button>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="audio/*,.mp3,.wav,.ogg,.flac,.m4a"
+                  style={{ display: "none" }}
+                  onChange={handleFileUpload}
+                />
+              </>
             )}
+
             {isRecording && (
               <button className="btn-stop pulse-ring" onClick={stop}>
                 <MicOff size={15} /> Stop
               </button>
             )}
           </div>
+
+          {uploadName && !isProcessing && (
+            <p className="upload-name">File: {uploadName}</p>
+          )}
         </div>
 
         {showError && (

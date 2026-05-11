@@ -397,3 +397,35 @@ button:active { transform: scale(0.97); }
   font-family: 'IBM Plex Mono', monospace;
   color: rgba(255,255,255,0.4);
 }
+
+/* ── Upload button ────────────────────────────── */
+.btn-upload {
+  padding: 12px 28px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 500;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.6);
+}
+
+.btn-upload:hover {
+  border-color: rgba(74,222,128,0.4);
+  color: #86efac;
+}
+
+.btn-row {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* ── Upload filename ──────────────────────────── */
+.upload-name {
+  text-align: center;
+  font-size: 11px;
+  color: rgba(255,255,255,0.3);
+  font-family: 'IBM Plex Mono', monospace;
+}

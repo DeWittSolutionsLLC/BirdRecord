@@ -3,7 +3,7 @@ import { Mic, MicOff, RotateCcw, MapPin, AlertCircle, Bird } from "lucide-react"
 import { useRecorder } from "./useRecorder";
 import "./App.css";
 
-const BACKEND_URL = "http://localhost:8000";
+const BACKEND_URL = "https://birdrecord.onrender.com";
 
 // ─── Waveform Visualizer ──────────────────────────────────────────────────────
 function WaveVisualizer({ analyserNode, isActive }) {

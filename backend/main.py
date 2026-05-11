@@ -7,25 +7,22 @@ import os
 import shutil
 import tempfile
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-# ── BirdNET ────────────────────────────────────────────────────────────────────
 from birdnetlib import Recording
 from birdnetlib.analyzer import Analyzer
-
-# ── Audio conversion ───────────────────────────────────────────────────────────
-from pydub import AudioSegment  # requires ffmpeg on PATH
+from pydub import AudioSegment
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Region lookup (mocked; swap for live eBird API when you have a key)
+# Region lookup
 # ─────────────────────────────────────────────────────────────────────────────
 REGION_MAP: dict[str, List[str]] = {
-    # North American species
     "American Robin":           ["Eastern North America", "Canada", "Mexico (winter)"],
     "Northern Cardinal":        ["Eastern & Central North America"],
     "House Sparrow":            ["Worldwide (introduced)", "North America", "Europe"],
@@ -46,7 +43,6 @@ REGION_MAP: dict[str, List[str]] = {
     "Baltimore Oriole":         ["Eastern North America", "Central America (winter)"],
     "Rose-breasted Grosbeak":   ["Eastern North America", "South America (winter)"],
     "Indigo Bunting":           ["Eastern North America", "Caribbean (winter)"],
-    # European species
     "Common Chaffinch":         ["Europe", "Western Asia", "North Africa"],
     "Eurasian Blackbird":       ["Europe", "Asia", "North Africa"],
     "Common Wood Pigeon":       ["Europe", "Central Asia"],
@@ -56,7 +52,6 @@ REGION_MAP: dict[str, List[str]] = {
     "Blue Tit":                 ["Europe", "Western Asia"],
     "European Robin":           ["Europe", "North Africa", "Western Asia"],
     "Common Cuckoo":            ["Europe", "Africa (winter)", "Asia"],
-    # Tropical / global
     "Common Myna":              ["South Asia", "Southeast Asia", "Introduced globally"],
     "Rose-ringed Parakeet":     ["South Asia", "Sub-Saharan Africa", "Introduced Europe"],
     "Zebra Finch":              ["Australia"],
@@ -67,11 +62,8 @@ FALLBACK_REGIONS = ["Widespread across multiple continents"]
 
 
 def get_regions(common_name: str) -> List[str]:
-    """Return known regions for a species, falling back to a generic message."""
-    # Exact match first
     if common_name in REGION_MAP:
         return REGION_MAP[common_name]
-    # Partial match (handles e.g. subspecies names like "American Robin (migratorius)")
     for key, regions in REGION_MAP.items():
         if key.lower() in common_name.lower() or common_name.lower() in key.lower():
             return regions
@@ -79,7 +71,7 @@ def get_regions(common_name: str) -> List[str]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Pydantic response models
+# Pydantic models
 # ─────────────────────────────────────────────────────────────────────────────
 class Detection(BaseModel):
     common_name: str
@@ -96,7 +88,7 @@ class AnalysisResponse(BaseModel):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# App setup
+# App + CORS
 # ─────────────────────────────────────────────────────────────────────────────
 app = FastAPI(title="BirdNET API", version="1.0.0")
 
@@ -106,22 +98,45 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
     allow_credentials=False,
+    max_age=3600,
 )
 
-# Load the BirdNET model once at startup (slow first load, fast thereafter)
-print("Loading BirdNET model …")
+# Explicit OPTIONS handler so preflight never gets a 405
+@app.options("/analyze")
+async def options_analyze(request: Request):
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        },
+    )
+
+@app.options("/health")
+async def options_health(request: Request):
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        },
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Model load
+# ─────────────────────────────────────────────────────────────────────────────
+print("Loading BirdNET model...")
 analyzer = Analyzer()
 print("BirdNET model ready.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Helper: convert any audio file → 48 kHz mono WAV (BirdNET requirement)
+# Audio conversion
 # ─────────────────────────────────────────────────────────────────────────────
 def to_birdnet_wav(src_path: str, dest_path: str) -> None:
-    """
-    Convert *src_path* to a 48 kHz, mono, 16-bit PCM WAV at *dest_path*.
-    pydub delegates the heavy lifting to ffmpeg.
-    """
     audio = AudioSegment.from_file(src_path)
     audio = audio.set_frame_rate(48_000).set_channels(1).set_sample_width(2)
     audio.export(dest_path, format="wav")
@@ -137,43 +152,30 @@ def health():
 
 @app.post("/analyze", response_model=AnalysisResponse)
 async def analyze_audio(audio: UploadFile = File(...)):
-    """
-    Accept any audio upload, convert it to 48 kHz mono WAV,
-    run BirdNET inference, and return detected species with regional data.
-    """
     suffix = Path(audio.filename or "recording.webm").suffix or ".webm"
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # 1. Save uploaded file
         raw_path = os.path.join(tmpdir, f"input{suffix}")
         with open(raw_path, "wb") as f:
             shutil.copyfileobj(audio.file, f)
 
-        # 2. Convert to BirdNET-compatible WAV
         wav_path = os.path.join(tmpdir, "converted.wav")
         try:
             to_birdnet_wav(raw_path, wav_path)
         except Exception as exc:
             raise HTTPException(
                 status_code=422,
-                detail=f"Audio conversion failed: {exc}. "
-                       "Ensure ffmpeg is installed and on your PATH.",
+                detail=f"Audio conversion failed: {exc}. Ensure ffmpeg is installed.",
             )
 
-        # 3. Run BirdNET inference
         try:
-            recording = Recording(
-                analyzer,
-                wav_path,
-                min_conf=0.25,   # minimum confidence threshold (0–1)
-            )
+            recording = Recording(analyzer, wav_path, min_conf=0.25)
             recording.analyze()
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"BirdNET error: {exc}")
 
-        # 4. Build response
         detections: List[Detection] = []
-        seen: set[str] = set()  # deduplicate same species across time windows
+        seen: set[str] = set()
 
         for det in recording.detections:
             name = det.get("common_name", "Unknown")
@@ -191,7 +193,5 @@ async def analyze_audio(audio: UploadFile = File(...)):
                 )
             )
 
-        # Sort by confidence descending
         detections.sort(key=lambda d: d.confidence, reverse=True)
-
         return AnalysisResponse(detections=detections, total=len(detections))

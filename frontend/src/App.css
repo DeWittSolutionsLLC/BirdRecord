@@ -361,3 +361,39 @@ button:active { transform: scale(0.97); }
   color: rgba(255,255,255,0.14);
   font-family: 'IBM Plex Mono', monospace;
 }
+
+/* ── Backend status indicator ─────────────────── */
+.backend-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  padding: 5px 14px;
+  border-radius: 99px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot-ready {
+  background: #4ade80;
+  box-shadow: 0 0 6px #4ade80;
+}
+
+.dot-warming {
+  background: #facc15;
+  box-shadow: 0 0 6px #facc15;
+  animation: pulse-ring 1.2s ease-in-out infinite;
+}
+
+.status-dot-label {
+  font-size: 11px;
+  font-family: 'IBM Plex Mono', monospace;
+  color: rgba(255,255,255,0.4);
+}

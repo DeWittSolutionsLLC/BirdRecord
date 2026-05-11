@@ -5,7 +5,6 @@ import "./App.css";
 
 const BACKEND_URL = "https://birdrecord.onrender.com";
 
-// ─── Waveform Visualizer ──────────────────────────────────────────────────────
 function WaveVisualizer({ analyserNode, isActive }) {
   const canvasRef = useRef(null);
   const rafRef    = useRef(null);
@@ -58,7 +57,6 @@ function WaveVisualizer({ analyserNode, isActive }) {
   return <canvas ref={canvasRef} width={480} height={80} className="wave-canvas" />;
 }
 
-// ─── Confidence Bar ───────────────────────────────────────────────────────────
 function ConfidenceBar({ score }) {
   const pct   = Math.round(score * 100);
   const color = pct >= 75 ? "#4ade80" : pct >= 50 ? "#facc15" : "#f87171";
@@ -69,58 +67,43 @@ function ConfidenceBar({ score }) {
         <span className="conf-label" style={{ color }}>{pct}%</span>
       </div>
       <div className="conf-track">
-        <div
-          className="conf-fill"
-          style={{ width: `${pct}%`, background: color, boxShadow: `0 0 8px ${color}` }}
-        />
+        <div className="conf-fill" style={{ width: `${pct}%`, background: color, boxShadow: `0 0 8px ${color}` }} />
       </div>
     </div>
   );
 }
 
-// ─── Result Card ──────────────────────────────────────────────────────────────
 function ResultCard({ result }) {
   return (
     <div className="card fadein">
       <div className="card-header">
-        <div className="card-icon">
-          <Bird size={22} color="#4ade80" />
-        </div>
+        <div className="card-icon"><Bird size={22} color="#4ade80" /></div>
         <div>
           <h2 className="card-name">{result.common_name}</h2>
           <p className="card-sci">{result.scientific_name}</p>
         </div>
       </div>
-
       <ConfidenceBar score={result.confidence} />
-
       <div>
         <p className="regions-label">Common Regions</p>
         <div className="regions-list">
           {result.regions.map((r) => (
-            <span key={r} className="region-tag">
-              <MapPin size={10} />{r}
-            </span>
+            <span key={r} className="region-tag"><MapPin size={10} />{r}</span>
           ))}
         </div>
       </div>
-
       {result.start_time !== undefined && (
-        <p className="det-time">
-          Detected at {result.start_time.toFixed(1)}s – {result.end_time.toFixed(1)}s
-        </p>
+        <p className="det-time">Detected at {result.start_time.toFixed(1)}s - {result.end_time.toFixed(1)}s</p>
       )}
     </div>
   );
 }
 
-// ─── Timer Ring ───────────────────────────────────────────────────────────────
 function TimerRing({ progress, elapsed }) {
   const r    = 54;
   const circ = 2 * Math.PI * r;
   const dash = circ * (1 - progress);
   const secs = Math.ceil((10000 - elapsed) / 1000);
-
   return (
     <div className="timer-ring">
       <svg width={140} height={140} className="timer-svg">
@@ -135,7 +118,6 @@ function TimerRing({ progress, elapsed }) {
   );
 }
 
-// ─── Spinner ──────────────────────────────────────────────────────────────────
 function Spinner() {
   return (
     <div className="spinner-wrap">
@@ -143,17 +125,24 @@ function Spinner() {
         <circle cx={18} cy={18} r={15} fill="none" stroke="rgba(74,222,128,0.2)" strokeWidth={3} />
         <path d="M18 3 a15 15 0 0 1 15 15" fill="none" stroke="#4ade80" strokeWidth={3} strokeLinecap="round" />
       </svg>
-      <p className="spinner-text">Analyzing audio…</p>
+      <p className="spinner-text">Analyzing audio...</p>
     </div>
   );
 }
 
-// ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const { phase, audioBlob, elapsed, progress, analyserNode, errorMsg, start, stop, reset } = useRecorder();
-  const [results,  setResults]  = useState([]);
-  const [apiError, setApiError] = useState("");
-  const [loading,  setLoading]  = useState(false);
+  const [results,      setResults]      = useState([]);
+  const [apiError,     setApiError]     = useState("");
+  const [loading,      setLoading]      = useState(false);
+  const [backendReady, setBackendReady] = useState(false);
+
+  // Wake up the backend as soon as the page loads
+  useEffect(() => {
+    fetch(`${BACKEND_URL}/health`)
+      .then(r => { if (r.ok) setBackendReady(true); })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (phase === "done" && audioBlob) analyze(audioBlob);
@@ -191,7 +180,6 @@ export default function App() {
     <div className="page">
       <div className="container">
 
-        {/* Header */}
         <div className="header">
           <div className="header-rule">
             <div className="header-rule-line left" />
@@ -199,10 +187,15 @@ export default function App() {
             <div className="header-rule-line right" />
           </div>
           <h1 className="header-title">BirdNET</h1>
-          <p className="header-sub">Record ambient audio · Identify species · Discover habitats</p>
+          <p className="header-sub">Record ambient audio - Identify species - Discover habitats</p>
+          <div className="backend-status">
+            <span className={`status-dot ${backendReady ? "dot-ready" : "dot-warming"}`} />
+            <span className="status-dot-label">
+              {backendReady ? "Backend ready" : "Warming up backend..."}
+            </span>
+          </div>
         </div>
 
-        {/* Recorder Panel */}
         <div className="panel">
           <WaveVisualizer analyserNode={analyserNode} isActive={isRecording} />
 
@@ -229,7 +222,6 @@ export default function App() {
                   : <><RotateCcw size={14} /> Record Again</>}
               </button>
             )}
-
             {isRecording && (
               <button className="btn-stop pulse-ring" onClick={stop}>
                 <MicOff size={15} /> Stop
@@ -238,7 +230,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Error */}
         {showError && (
           <div className="error-box fadein">
             <AlertCircle size={18} color="#f87171" style={{ flexShrink: 0, marginTop: 1 }} />
@@ -246,7 +237,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Results */}
         {showResults && (
           <div className="results fadein">
             <p className="results-label">
@@ -256,8 +246,7 @@ export default function App() {
           </div>
         )}
 
-        <p className="footer">Powered by BirdNET · Cornell Lab of Ornithology</p>
-
+        <p className="footer">Powered by BirdNET - Cornell Lab of Ornithology</p>
       </div>
     </div>
   );

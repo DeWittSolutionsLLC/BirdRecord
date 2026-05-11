@@ -1,12 +1,8 @@
-# BirdNET Analysis API – Python dependencies
-# Install with: pip install -r requirements.txt
-
 fastapi==0.111.0
 uvicorn[standard]==0.29.0
-python-multipart==0.0.9   # required for FastAPI UploadFile
-
+python-multipart==0.0.9
 birdnetlib==0.18.1
-pydub==0.25.1              # audio conversion (delegates to ffmpeg)
-
-# Optional: numpy is pulled in transitively but pin for stability
-numpy>=1.24,<2.0
+pydub==0.25.1
+librosa==0.11.0
+numpy>=2.0
+tensorflow==2.21.0

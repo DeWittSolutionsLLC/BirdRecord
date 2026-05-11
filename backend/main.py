@@ -102,9 +102,10 @@ app = FastAPI(title="BirdNET API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],          # tighten in production
-    allow_methods=["*"],
+    allow_origins=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
+    allow_credentials=False,
 )
 
 # Load the BirdNET model once at startup (slow first load, fast thereafter)

@@ -3,7 +3,7 @@ import { Mic, MicOff, RotateCcw, MapPin, AlertCircle, Bird } from "lucide-react"
 import { useRecorder } from "./useRecorder";
 import "./App.css";
 
-const BACKEND_URL = "https://birdrecord.onrender.com";
+const BACKEND_URL = "https://Dillonld-birdrecord.hf.space";
 
 function WaveVisualizer({ analyserNode, isActive }) {
   const canvasRef = useRef(null);

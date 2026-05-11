@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Mic, MicOff, RotateCcw, MapPin, AlertCircle, Bird, Upload } from "lucide-react";
+import { Mic, MicOff, RotateCcw, MapPin, AlertCircle, Bird, Upload, SlidersHorizontal } from "lucide-react";
 import { useRecorder } from "./useRecorder";
 import "./App.css";
 
@@ -73,12 +73,42 @@ function ConfidenceBar({ score }) {
   );
 }
 
+function BirdImage({ commonName, scientificName }) {
+  const [imgUrl, setImgUrl] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const query = encodeURIComponent(scientificName || commonName);
+    fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${query}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.thumbnail?.source) setImgUrl(data.thumbnail.source);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [commonName, scientificName]);
+
+  if (loading) return (
+    <div className="bird-img-placeholder">
+      <Bird size={20} color="rgba(74,222,128,0.3)" />
+    </div>
+  );
+
+  if (!imgUrl) return (
+    <div className="bird-img-placeholder">
+      <Bird size={20} color="rgba(74,222,128,0.3)" />
+    </div>
+  );
+
+  return <img src={imgUrl} alt={commonName} className="bird-img" />;
+}
+
 function ResultCard({ result }) {
   return (
     <div className="card fadein">
       <div className="card-header">
-        <div className="card-icon"><Bird size={22} color="#4ade80" /></div>
-        <div>
+        <BirdImage commonName={result.common_name} scientificName={result.scientific_name} />
+        <div className="card-title-wrap">
           <h2 className="card-name">{result.common_name}</h2>
           <p className="card-sci">{result.scientific_name}</p>
         </div>
@@ -130,16 +160,43 @@ function Spinner({ label }) {
   );
 }
 
+function ThresholdSlider({ value, onChange }) {
+  return (
+    <div className="threshold-wrap">
+      <div className="threshold-header">
+        <SlidersHorizontal size={13} color="#4ade80" />
+        <span className="threshold-label">Min Confidence</span>
+        <span className="threshold-value">{value}%</span>
+      </div>
+      <input
+        type="range"
+        min={10}
+        max={90}
+        step={5}
+        value={value}
+        onChange={e => onChange(Number(e.target.value))}
+        className="threshold-slider"
+      />
+      <div className="threshold-marks">
+        <span>10%</span>
+        <span>50%</span>
+        <span>90%</span>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { phase, audioBlob, elapsed, progress, analyserNode, errorMsg, start, stop, reset } = useRecorder();
   const [results,      setResults]      = useState([]);
+  const [allResults,   setAllResults]   = useState([]);
   const [apiError,     setApiError]     = useState("");
   const [loading,      setLoading]      = useState(false);
   const [backendReady, setBackendReady] = useState(false);
   const [uploadName,   setUploadName]   = useState("");
+  const [threshold,    setThreshold]    = useState(50);
   const fileInputRef = useRef(null);
 
-  // Wake up backend on page load
   useEffect(() => {
     fetch(`${BACKEND_URL}/health`)
       .then(r => { if (r.ok) setBackendReady(true); })
@@ -150,10 +207,16 @@ export default function App() {
     if (phase === "done" && audioBlob) analyze(audioBlob, "recording.webm");
   }, [phase, audioBlob]);
 
+  // Re-filter when threshold changes
+  useEffect(() => {
+    setResults(allResults.filter(r => r.confidence * 100 >= threshold));
+  }, [threshold, allResults]);
+
   async function analyze(blob, filename) {
     setLoading(true);
     setApiError("");
     setResults([]);
+    setAllResults([]);
     const form = new FormData();
     form.append("audio", blob, filename || "recording.webm");
     try {
@@ -163,9 +226,14 @@ export default function App() {
         throw new Error(err.detail || `Server error ${res.status}`);
       }
       const data = await res.json();
-      setResults(data.detections || []);
-      if ((data.detections || []).length === 0)
-        setApiError("No bird species detected. Try a clearer recording or a file with more bird sounds.");
+      const all = data.detections || [];
+      setAllResults(all);
+      const filtered = all.filter(r => r.confidence * 100 >= threshold);
+      setResults(filtered);
+      if (filtered.length === 0)
+        setApiError(all.length > 0
+          ? `${all.length} detection(s) found below the ${threshold}% threshold. Try lowering the slider.`
+          : "No bird species detected. Try a clearer recording or a file with more bird sounds.");
     } catch (e) {
       setApiError(e.message);
     } finally {
@@ -181,7 +249,6 @@ export default function App() {
     setResults([]);
     reset();
     analyze(file, file.name);
-    // Reset input so same file can be re-uploaded
     e.target.value = "";
   }
 
@@ -225,23 +292,20 @@ export default function App() {
             )}
           </div>
 
-          {/* Buttons */}
           <div className="btn-row">
             {!isRecording && !isProcessing && (
               <>
                 <button
                   className={phase === "idle" ? "btn-start" : "btn-reset"}
-                  onClick={phase === "idle" ? start : () => { reset(); setUploadName(""); setResults([]); setApiError(""); }}
+                  onClick={phase === "idle" ? start : () => { reset(); setUploadName(""); setResults([]); setAllResults([]); setApiError(""); }}
                 >
                   {phase === "idle"
                     ? <><Mic size={15} /> Record</>
                     : <><RotateCcw size={14} /> Reset</>}
                 </button>
-
                 <button className="btn-upload" onClick={() => fileInputRef.current.click()}>
                   <Upload size={15} /> Upload File
                 </button>
-
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -251,7 +315,6 @@ export default function App() {
                 />
               </>
             )}
-
             {isRecording && (
               <button className="btn-stop pulse-ring" onClick={stop}>
                 <MicOff size={15} /> Stop
@@ -262,6 +325,8 @@ export default function App() {
           {uploadName && !isProcessing && (
             <p className="upload-name">File: {uploadName}</p>
           )}
+
+          <ThresholdSlider value={threshold} onChange={setThreshold} />
         </div>
 
         {showError && (
@@ -275,6 +340,9 @@ export default function App() {
           <div className="results fadein">
             <p className="results-label">
               {results.length} Detection{results.length !== 1 ? "s" : ""} Found
+              {allResults.length > results.length && (
+                <span className="results-filtered"> ({allResults.length - results.length} below threshold)</span>
+              )}
             </p>
             {results.map((r, i) => <ResultCard key={i} result={r} />)}
           </div>
